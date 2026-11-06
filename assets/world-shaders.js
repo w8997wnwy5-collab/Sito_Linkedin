@@ -66,7 +66,7 @@ void main(){
   float tw = .7 + .3 * sin(uTime * 1.4 + s * 31.);
   float ctw = .55 + .45 * sin(uTime * (2. + s * 3.) + s * 60.);
   float base = lake > .5 ? .78 * tw : (city > .5 ? 1.1 * ctw : (.56 + .42 * hh));
-  vA = fog * near * base * (1. + hot * 1.1);
+  vA = fog * near * base * (1. + hot * 1.1) * (1. + smoothstep(35., 90., dist) * .6);
   vC = col;
   gl_PointSize = clamp(uSize * uPR * (1. + hot * .9 + city * .5) * 30. / dist, 1., 9. * uPR);
 }`,

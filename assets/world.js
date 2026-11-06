@@ -104,6 +104,7 @@ export function createWorld(canvas, opts = {}) {
   RP.push([LAYOUT.lugano[0], 1.3, LAYOUT.lugano[1]]);
   for (let i = 0; i < RP.length - 1; i++) { route.push(...RP[i], ...RP[i + 1]); routeT.push(i / (RP.length - 1), (i + 1) / (RP.length - 1)); }
   addLines('route', route, routeT);
+  const BEADS = 26, beads = Array.from({ length: BEADS }, (_, i) => RP[Math.round(i / (BEADS - 1) * (RP.length - 1))]);
   // project monoliths
   const monoTop = [];
   LAYOUT.projects.forEach(([x, z], i) => {
@@ -139,7 +140,7 @@ export function createWorld(canvas, opts = {}) {
   B.sPos = buffer(gl, SP); B.sCol = buffer(gl, SC); B.sSize = buffer(gl, SS);
 
   /* ---------- dynamic glow nodes ---------- */
-  const NN = 1 + 14 + 10 + 5 + 2 + 3, NP = new Float32Array(NN * 3), NC = new Float32Array(NN * 4), NS = new Float32Array(NN);
+  const NN = 1 + 14 + 10 + 5 + 2 + 3 + 27, NP = new Float32Array(NN * 3), NC = new Float32Array(NN * 4), NS = new Float32Array(NN);
   B.nPos = buffer(gl, NP, gl.DYNAMIC_DRAW); B.nCol = buffer(gl, NC, gl.DYNAMIC_DRAW); B.nSize = buffer(gl, NS, gl.DYNAMIC_DRAW);
 
   /* ---------- name particles ---------- */
@@ -181,7 +182,7 @@ export function createWorld(canvas, opts = {}) {
   const st = { s: 0, intro: 0, morph: 0, packet: 0, proj: -1, hiSkill: -1, pointer: [0, 0, 0], ink: 0, boomT: -99, ripT: -99, ripX: 0, ripZ: 0 };
   let colors = COL.dark, theme = 'dark';
   const sky = { top: [.016, .024, .06], bot: [.05, .08, .2], glow: [.3, .2, .5], amt: .5, ground: [.008, .012, .03] };
-  let W = 1, H = 1, pr = 1, quality = 1, terrainDraw = nT, t0 = performance.now(), time = 0, aspect = 1;
+  let W = 1, H = 1, pr = 1, quality = 1, terrainDraw = nT, t0 = performance.now(), time = 0, aspect = 1, lastT = 0;
   let hover = [0, 0, 0], mouseW = [0, 0, 0];
   const skillPos = [], credOn = new Float32Array(10);
   let boomDone = false;
@@ -265,9 +266,10 @@ export function createWorld(canvas, opts = {}) {
 
   function render(now) {
     time = (now - t0) / 1000;
+    const dtc = lastT ? Math.min(.25, time - lastT) : 1 / 60; lastT = time;
     if (first) { desired(want); cam.pos = want.pos.slice(); cam.tgt = want.tgt.slice(); cam.fov = want.fov; first = false; }
     desired(want);
-    const k = opts.reduced ? 1 : .075;
+    const k = opts.reduced ? 1 : 1 - Math.exp(-dtc * 4.2); // frame-rate independent glide
     for (let i = 0; i < 3; i++) { cam.pos[i] += (want.pos[i] - cam.pos[i]) * k; cam.tgt[i] += (want.tgt[i] - cam.tgt[i]) * k; }
     cam.fov += (want.fov - cam.fov) * k;
     perspective(proj, cam.fov * Math.PI / 180, aspect, .5, 420);
@@ -317,7 +319,7 @@ export function createWorld(canvas, opts = {}) {
     const seg = st.packet, live = Math.round(clamp(seg, 0, 2));
     for (let i = 0; i < 3; i++) drawLines('plate' + i, Math.abs(seg - i) < .5 && seg > .02 && i === live ? colors.plateOn : colors.plate, 1, 1.01, 0);
     drawLines('beam', colors.route, .9, seg / 2, 0);
-    const routeOn = sstep(2.3, 3.2, s), routeDraw = sstep(2.5, 3.3, s);
+    const routeOn = sstep(2.2, 2.8, s), routeDraw = sstep(2.3, 2.95, s);
     drawLines('route', colors.route, routeOn, routeDraw, 60);
     const projOn = sstep(3.4, 4.1, s) * (1 - sstep(5.6, 6.4, s) * .6);
     for (let i = 0; i < 5; i++) { const on = Math.max(0, 1 - Math.abs(st.proj - i)); drawLines('mono' + i, on > .5 ? colors.monoOn : colors.mono, (.12 + .88 * projOn) * (on > .5 ? 1 : .8), 1.01, 0); }
@@ -350,6 +352,11 @@ export function createWorld(canvas, opts = {}) {
     node([LAYOUT.lugano[0], 1.4, LAYOUT.lugano[1]], colors.nodeOn, .5 + routeOn * .5, 7 + Math.sin(time * 3) * 1.5);
     node([LAYOUT.rome[0], Math.max(height(LAYOUT.rome[0], LAYOUT.rome[1]), 0) + 1.4, LAYOUT.rome[1]], colors.node, routeOn, 6);
     LAYOUT.plates.forEach((y, i) => node([pcx, y, pcz], i === live && seg > .02 ? colors.nodeOn : colors.node, .5, 3.5));
+    if (routeOn > .01) {
+      beads.forEach((p, i) => node(p, colors.nodeOn, routeOn * (i / (BEADS - 1) <= routeDraw + .001 ? .9 : 0), 6));
+      const tr = ((time * .09) % 1) * routeDraw, tp = RP[Math.min(RP.length - 1, Math.round(tr * (RP.length - 1)))];
+      node(tp, [1, .85, .6], routeOn, 12 + Math.sin(time * 6) * 2);
+    }
     gl.useProgram(P.glow.p); common(P.glow); gl.uniform1f(P.glow.u.uTw, 0);
     gl.bindBuffer(gl.ARRAY_BUFFER, B.nPos); gl.bufferSubData(gl.ARRAY_BUFFER, 0, NP);
     gl.bindBuffer(gl.ARRAY_BUFFER, B.nCol); gl.bufferSubData(gl.ARRAY_BUFFER, 0, NC);
